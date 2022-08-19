@@ -1,0 +1,203 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+V zvezku so predstavljeni vsi modeli, ki smo jih uporabili v delu diplomskega seminarja. Poleg 
+tega je predstavljena tudi napaka, ki smo jo minimizirali pri učenju modelov.
+
+Najprej uvozimo vse potrebne pakete
+
+```{r}
+library(caret)
+library(readr)
+library(kernlab)
+library(PRROC)
+library(dplyr)
+library(rpart)
+library(rpart.plot)
+library(torch)
+library(ROCR)
+library(parallel)
+library(doParallel)
+library(pROC)
+```
+
+Nato uvozimo podatke iz mape podatki
+```{r}
+podatki = read.csv("")
+```
+
+Zaradi paketa **caret** moramo klasificirati 1 kot Y in 0 kot N.
+```{r}
+podatki$Class[podatki$Class != 1] = "N"
+podatki$Class[podatki$Class == 1] = "Y"
+podatki$Class = podatki$Class %>% as.factor()
+```
+
+Definiramo se učno množico. Torej od 1.1.2022 do 30.4.2022 je učna množica in od 1.5.2022 do 14.6.2022 je testna množica.
+To pomeni, da je za 15m podatke učna množica za indekse 1:x in za 1h podatke 1:y. Ostali indeksi so testna množica.
+
+```{r}
+podatki_ucni = podatki[1:2342,]
+```
+
+Odstranimo še napovedni spremenljivki 
+```{r}
+ucna = podatki_ucni[,c(-2,-8)]
+testna = podatki[2342:2744 ,][,c(-2,-8)]
+```
+
+Sedaj definiramo napako. Razlaga zakaj smo jo izbrali, se nahaja v delu.
+V delu jo imenujemo **strošek**, tukaj pa jo označimo s **cost**.
+```{r}
+napakaPoMeri = function(data, levels, ...){
+  falseNegative = sum(data$pred == "N" & data$obs == "Y")
+  falsePositive = sum(data$pred == "Y" & data$obs == "N")
+  cost = falseNegative *1 + falsePositive * 5
+  names(cost) = 'cost'
+  return(cost)
+}
+```
+
+Ker imamo podatke, ki so časovna vrsta moramo v `trainControl` uporabiti metodo "timeslice", ki razdeli celotno obdobje na 
+več intervalov.
+```{r}
+myTimeControl <- trainControl(method = "timeslice",
+                              initialWindow = 48,
+                              horizon = 12,
+                              fixedWindow = FALSE,
+                              allowParallel = TRUE,
+                              savePredictions = TRUE,
+                              classProbs = TRUE,
+                              summaryFunction = napakaPoMeri,
+                              preProcOptions = c("center", "scale")
+                              )
+```
+
+Spodaj so sedaj navedeni modeli in vse metrike, ki smo jih izračunali. Izračunane so za vsak model posebej.
+
+###############################################################################
+1. Model k-najbližjih sosedov.
+Optimizacijo hiperparametra *k* naredimo za vsake podatke posebej. 
+To naredimo tako, da tuneGrid=data.frame(k=seq(1,200,3))
+
+Model_knn že vrne koliko je bila metrika *cost*.
+```{r}
+model_knn = train(Class ~ ., data = ucna,
+              method = "knn",
+              metric = "cost_2",
+              maximize ="false",
+              trControl = myTimeControl,
+              tuneGrid=data.frame(k=K))
+model_knn
+```
+
+Izračunamo še natančnost.
+```{r}
+napoved_knn = predict(model_knn, newdata = testna)
+natancnost_knn = sum(napoved_knn == testna$Class) / nrow(testna) *100
+sprintf("Natancnost je: %.7f odstotkov", natancnost_knn)
+```
+
+Izračunamo vrednost *AUC* in narišemo *ROC krivuljo*.
+```{r}
+AUC_knn = roc.curve(scores.class0 = model_knn$pred$Y[model_knn$pred$obs == "Y"], 
+                    scores.class1 = model_knn$pred$Y[model_knn$pred$obs == "N"],
+                    curve = TRUE)
+print(AUC_knn)
+plot(AUC_knn, main="ROC krivulja", ylab="Občutljivost", xlab="1-specifičnost")
+```
+
+Tabela napačnih napovedi.
+```{r}
+confusionMatrix(napoved_knn, reference=testna$Class, positive="Y")
+```
+
+Izračun dobička s funkcijo **profit**.
+```{r}
+profit_knn = profit_t(testna,napoved_knn, obdobje = 12)
+sum(profit_knn$Profit)
+```
+
+
+###############################################################################
+2. Model logistične regresije.
+
+
+```{r}
+model_glm_g = train(Class ~., 
+                    data = ucna,
+                    method = "glm",
+                    metric = "cost",
+                    maximize ="false",
+                    trControl = myTimeControl)
+                    
+```
+
+```{r}
+napoved_glm = predict(model_glm, newdata = testna)
+natancnost_glm = sum(napoved_glm == testna$Class) / nrow(testna) *100
+sprintf("Natancnost je: %.7f odstotkov", natancnost_glm)
+```
+
+```{r}
+AUC_glm = roc.curve(scores.class0 = model_glm$pred$Y[model_glm$pred$obs == "Y"], 
+                    scores.class1 = model_glm$pred$Y[model_glm$pred$obs == "N"],
+                    curve = TRUE)
+print(AUC_glm)
+plot(AUC_glm, main="ROC krivulja", ylab="Občutljivost", xlab="1-specifičnost")
+```
+
+```{r}
+confusionMatrix(napoved_glm, reference=testna$Class, positive="Y")
+```
+
+```{r}
+profit_glm = profit_t(testna,napoved_glm, obdobje = 12)
+sum(profit_glm$Profit)
+```
+
+###############################################################################
+3. Model odločitvenih dreves.
+
+```{r}
+
+model_rpart = train(Class ~ ., data = ucna,
+              method = "rpart",
+              metric = "cost",
+              maximize ="false",
+              trControl = myTimeControl,
+              tuneGrid = data.frame(cp = 0.01),
+              control=rpart.control(maxdepth = 30, minsplit=4)
+              )
+```
+
+```{r}
+napoved_rpart = predict(model_rpart, newdata = testna)
+natancnost_rpart = sum(napoved_rpart == testna$Class) / nrow(testna) *100
+sprintf("Natancnost je: %.7f odstotkov", natancnost_rpart)
+
+```
+
+```{r}
+AUC_rpart = roc.curve(scores.class0 = model_rpart$pred$Y[model_rpart$pred$obs == "Y"], 
+                      scores.class1 = model_rpart$pred$Y[model_rpart$pred$obs == "N"],
+                      curve = TRUE)
+print(AUC_rpart)
+plot(AUC_rpart, main="ROC krivulja", ylab="Občutljivost", xlab="1-specifičnost")
+```
+
+```{r}
+confusionMatrix(napoved_rpart, reference=testna$Class, positive="Y")
+```
+
+```{r}
+profit_rpart = profit_t(testna,napoved_rpart, obdobje = 12)
+sum(profit_rpart$Profit)
+```
+
+
+
+
+

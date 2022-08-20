@@ -1,0 +1,52 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+profit = function(podatki, napovedi, obdobje){
+  
+  df <- podatki
+  skupno_svec <- nrow(df) - obdobje 
+  
+  
+    
+  uspesno_neus <- foreach(j = 1: skupno_svec, .combine = c) %do% {
+    kupi <- df$Close[j]
+      cilj_limit <- kupi * (1 + 0.02)  #vzami dobiček
+      cilj_stop <- kupi * (1 - 0.05)   #stop izguba
+      vis <- df$High[(j+1):(j+obdobje)] 
+      niz <- df$Low[(j+1):(j+obdobje)]
+      
+      test_vis <- vis >= cilj_limit 
+      test_niz <- niz <= cilj_stop
+      
+      prvi_limit <- ifelse(any(test_vis == TRUE), min(which(test_vis == TRUE)), NA) 
+      prvi_stop <- ifelse(any(test_niz == TRUE), min(which(test_niz == TRUE)), NA)
+      
+    if(napovedi[j] == "N"){
+      profit <- 0
+    }
+    else{
+      if(is.na(prvi_limit) & is.na(prvi_stop)){
+        profit <- ((kupi - df$Close[j+ obdobje])/kupi - 0.001) * 100
+      }
+      else if(is.na(prvi_limit)){
+        profit <- -100 *(0.05 + 0.001)
+      }
+      else if(is.na(prvi_stop)){
+        profit <-  (0.02 - 0.001)*100
+      }
+      else {
+        profit <- ifelse(prvi_limit < prvi_stop, (0.02-0.001)*100, -(0.05+0.001)*100) 
+      }
+    }
+    return(profit)  
+  }
+  Profit <- c(uspesno_neus, rep(0, obdobje)) 
+  profit_df <- cbind(Profit, df) 
+  return(profit_df)
+}
+
+```
+  

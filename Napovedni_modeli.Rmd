@@ -23,9 +23,15 @@ library(doParallel)
 library(pROC)
 ```
 
-Nato uvozimo podatke iz mape podatki
+Nato uvozimo podatke iz mape podatki.
+V *read.csv()* vstavimo.
+- Za podatke BTC-USDT 15min vstavimo: "podatki/BTCUSDT_15min"
+- Za podatke ETH-USDT 15min vstavimo: "podatki/ETHUSDT_15min"
+- Za podatke BTC-USDT 1ura vstavimo: "podatki/BTCUSDT_1ura"
+- Za podatke ETH-USDT 1ura vstavimo: "podatki/ETHUSDT_1ura"
+
 ```{r}
-podatki = read.csv("")
+podatki = read.csv("podatki/BTCUSDT_1ura")[-1]
 ```
 
 Zaradi paketa **caret** moramo klasificirati 1 kot Y in 0 kot N.
@@ -36,16 +42,17 @@ podatki$Class = podatki$Class %>% as.factor()
 ```
 
 Definiramo se učno množico. Torej od 1.1.2022 do 30.4.2022 je učna množica in od 1.5.2022 do 14.6.2022 je testna množica.
-To pomeni, da je za 15m podatke učna množica za indekse 1:x in za 1h podatke 1:y. Ostali indeksi so testna množica.
+To pomeni, da za 15m podatke učna množica vsebuje indekse 1:11520, torej je *x*=11520. 
+Za podatke 1ura učna  množica vsebuje indekse 1:2880, torej je *x*=2880.
 
 ```{r}
-podatki_ucni = podatki[1:2342,]
+podatki_ucni = podatki[1:x,]
 ```
 
-Odstranimo še napovedni spremenljivki 
+Odstranimo še napovedni spremenljivki časa. Tudi tukaj vstavimo *x* iz zgoraj. 
 ```{r}
 ucna = podatki_ucni[,c(-2,-8)]
-testna = podatki[2342:2744 ,][,c(-2,-8)]
+testna = podatki[-c(1:x) ,][,c(-2,-8)]
 ```
 
 Sedaj definiramo napako. Razlaga zakaj smo jo izbrali, se nahaja v delu.
@@ -80,7 +87,8 @@ Spodaj so sedaj navedeni modeli in vse metrike, ki smo jih izračunali. Izračun
 ###############################################################################
 1. Model k-najbližjih sosedov.
 Optimizacijo hiperparametra *k* naredimo za vsake podatke posebej. 
-To naredimo tako, da tuneGrid=data.frame(k=seq(1,200,3))
+To naredimo tako, da uporabimo *tuneGrid=data.frame(k=seq(1,200,3))* in 
+pogledamo za kateri *k* imamo najnižjo vrednsot *cost*.
 
 Model_knn že vrne koliko je bila metrika *cost*.
 ```{r}

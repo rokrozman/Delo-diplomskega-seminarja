@@ -94,7 +94,7 @@ Model_knn že vrne koliko je bila metrika *cost*.
 ```{r}
 model_knn = train(Class ~ ., data = ucna,
               method = "knn",
-              metric = "cost_2",
+              metric = "cost",
               maximize ="false",
               trControl = myTimeControl,
               tuneGrid=data.frame(k=K))
@@ -123,8 +123,10 @@ confusionMatrix(napoved_knn, reference=testna$Class, positive="Y")
 ```
 
 Izračun dobička s funkcijo **profit**.
+V primeru podatkov s časovnim intervalom uporabimo 15min uporabimo parametra *tprof*=0.01 in *sl*=0.02.
+V primeru podatkov s časovnim intervalom uporabimo 15min uporabimo parametra *tprof*=0.025 in *sl*=0.05.
 ```{r}
-profit_knn = profit_t(testna,napoved_knn, obdobje = 12)
+profit_knn = profit(testna,napoved_knn, obdobje = 12, tprof=0.025, sl=0.05 )
 sum(profit_knn$Profit)
 ```
 
@@ -162,13 +164,13 @@ confusionMatrix(napoved_glm, reference=testna$Class, positive="Y")
 ```
 
 ```{r}
-profit_glm = profit_t(testna,napoved_glm, obdobje = 12)
+profit_glm = profit(testna,napoved_glm, obdobje = 12, tprof=0.025, sl=0.05)
 sum(profit_glm$Profit)
 ```
 
 ###############################################################################
 3. Model odločitvenih dreves.
-
+Izvesti moramo tudi optimizacijo hiperparametrov *CP*,*MD* in *MS*.
 ```{r}
 
 model_rpart = train(Class ~ ., data = ucna,
@@ -176,8 +178,8 @@ model_rpart = train(Class ~ ., data = ucna,
               metric = "cost",
               maximize ="false",
               trControl = myTimeControl,
-              tuneGrid = data.frame(cp = 0.01),
-              control=rpart.control(maxdepth = 30, minsplit=4)
+              tuneGrid = data.frame(cp = CP),
+              control=rpart.control(maxdepth = MD, minsplit=MS)
               )
 ```
 
@@ -201,7 +203,7 @@ confusionMatrix(napoved_rpart, reference=testna$Class, positive="Y")
 ```
 
 ```{r}
-profit_rpart = profit_t(testna,napoved_rpart, obdobje = 12)
+profit_rpart = profit(testna,napoved_rpart, obdobje = 12, tprof=0.025, sl=0.05)
 sum(profit_rpart$Profit)
 ```
 
